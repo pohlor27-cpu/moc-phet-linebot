@@ -167,7 +167,11 @@ class LineWebhookHandler:
         )
 
         extracted = ocr_result.extracted_text.strip()
-        if not extracted or extracted.startswith("[Error"):
+        if not extracted or extracted == "[NON_SCHEDULE_IMAGE]":
+            logger.info("Ignoring non-schedule image (silent mode)")
+            return
+
+        if extracted.startswith("[Error"):
             self.line_client.reply_text(
                 reply_token,
                 "⚠️ น้องบอทไม่สามารถอ่านข้อความจากรูปภาพนี้ได้ กรุณาลองส่งใหม่อีกครั้งนะครับผม"

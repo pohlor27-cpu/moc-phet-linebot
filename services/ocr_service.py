@@ -22,13 +22,13 @@ class OCRService:
             full_summary_text = self._mock_ocr_extract(image_bytes)
             detected_tasks = self.parse_text_to_work_items(full_summary_text, user_id, user_name, source="ocr", image_path=image_path)
 
-        if not detected_tasks and full_summary_text:
+        if not detected_tasks and full_summary_text and full_summary_text != "[NON_SCHEDULE_IMAGE]":
             detected_tasks = self.parse_text_to_work_items(full_summary_text, user_id, user_name, source="ocr", image_path=image_path)
 
         return OCRResult(
             extracted_text=full_summary_text,
             detected_tasks=detected_tasks,
-            confidence=0.95 if full_summary_text else 0.0,
+            confidence=0.95 if full_summary_text and full_summary_text != "[NON_SCHEDULE_IMAGE]" else 0.0,
             processed_at=datetime.now()
         )
 
@@ -61,9 +61,11 @@ class OCRService:
                 f"คุณคือ 'น้องบอท' ผู้ช่วย AI ประจำสำนักงานพาณิชย์จังหวัดเพชรบุรี (ตอบเป็นภาษาไทยสุภาพ เป็นผู้ชาย ลงท้ายด้วยครับ/ครับผม)\n"
                 f"บริบท: วันนี้คือวันที่ {today.isoformat()} (พ.ศ. {current_year + 543})\n\n"
                 f"คำสั่งสำคัญ:\n"
-                f"1. อ่านตารางงาน/เอกสาร/ตารางนัดหมายทั้งหมดในรูปภาพอย่างละเอียด\n"
-                f"2. สรุปรายการภารกิจทั้งหมดในรูปภาพออกมาให้อ่านง่าย ชัดเจน แยกเป็นรายวัน โดยต้องระบุ: วันที่, เวลา, กิจกรรม/สถานที่, **ชื่อผู้รับผิดชอบ/กลุ่มงาน**, และ **พนักงานขับรถ (ผขร.)** ไว้ท้ายงานทุกรายการเสมอ เช่น '(คุณสมศรี [กลุ่ม กค.] | ผขร: พี่ยศ)' หรือ '(คุณกรรณิการ์)'\n"
-                f"3. ในตอนท้ายสุดของคำตอบ ให้แนบ JSON Array ของรายการงานทั้งหมดในรูปแบบนี้:\n"
+                f"1. ตรวจสอบว่ารูปภาพนี้เป็น 'ตารางงาน/เอกสารภารกิจ/ตารางนัดหมาย' หรือไม่\n"
+                f"   • หากไม่ใช่ตารางงาน (เช่น เป็นรูปถ่ายทั่วไป รูปอาหาร รูปวิว รูปคน รูปสัตว์ สลิปโอนเงิน หรือรูปเล่น) ให้ตอบสั้นๆ เพียงคำเดียวว่า `[NON_SCHEDULE_IMAGE]` และไม่ต้องแนบ JSON ใดๆ\n"
+                f"2. หากเป็นตารางงาน/เอกสารภารกิจ:\n"
+                f"   • สรุปรายการภารกิจทั้งหมดในรูปภาพออกมาให้อ่านง่าย ชัดเจน แยกเป็นรายวัน โดยต้องระบุ: วันที่, เวลา, กิจกรรม/สถานที่, **ชื่อผู้รับผิดชอบ/กลุ่มงาน**, และ **พนักงานขับรถ (ผขร.)** ไว้ท้ายงานทุกรายการเสมอ เช่น '(คุณสมศรี [กลุ่ม กค.] | ผขร: พี่ยศ)' หรือ '(คุณกรรณิการ์)'\n"
+                f"   • ในตอนท้ายสุดของคำตอบ ให้แนบ JSON Array ของรายการงานทั้งหมดในรูปแบบนี้:\n"
                 f"```json\n"
                 f"[\n"
                 f'  {{"date": "YYYY-MM-DD", "time": "เวลา เช่น 09:00", "task": "ชื่องานและรายละเอียด", "assignee": "ชื่อผู้รับผิดชอบ/กลุ่มงาน", "driver": "ชื่อพนักงานขับรถ (ผขร.) ถ้ามีระบุ", "status": "DONE หรือ IN_PROGRESS"}}\n'
@@ -72,7 +74,6 @@ class OCRService:
                 f"หมายเหตุ: แปลงวันที่ เช่น '5 ต.ค.', '6 ต.ค. 69' เป็นปี ค.ศ. YYYY-MM-DD (เช่น 2026-10-05, 2026-10-06)"
             )
             
-            # Prioritize verified active models with available quota
             models_to_try = [
                 "gemini-3.1-flash-lite",
                 "gemini-3.6-flash",
@@ -88,20 +89,22 @@ class OCRService:
                     response = model.generate_content([prompt, image])
                     if response and response.text:
                         raw_output = response.text.strip()
+                        if "[NON_SCHEDULE_IMAGE]" in raw_output:
+                            return "[NON_SCHEDULE_IMAGE]", []
+                        
                         tasks = self._parse_json_tasks(raw_output, user_id, user_name, image_path)
                         
-                        # Clean raw json codeblocks from user reply
                         user_summary_text = re.sub(r"```(?:json)?\s*\[[\s\S]*?\]\s*```", "", raw_output).strip()
                         user_summary_text = re.sub(r"###\s*\*\*.*JSON.*?\*\*", "", user_summary_text, flags=re.IGNORECASE).strip()
                         
-                        if not user_summary_text:
+                        if not user_summary_text and tasks:
                             lines = ["📋 น้องบอทสรุปตารางภารกิจที่พบในรูปภาพให้แล้วครับผม:\n━━━━━━━━━━━━━━━━━━"]
                             for t in tasks:
                                 time_str = f"[{t.scheduled_time}] " if t.scheduled_time else ""
                                 lines.append(f"• ({t.log_date.strftime('%d/%m')}) {time_str}{t.task_text}")
                             user_summary_text = "\n".join(lines)
                         
-                        return user_summary_text, tasks
+                        return user_summary_text or "[NON_SCHEDULE_IMAGE]", tasks
                 except Exception as e:
                     logger.warning(f"Model {model_name} failed: {e}")
                     continue
@@ -176,7 +179,7 @@ class OCRService:
 
         for line in lines:
             clean_line = re.sub(r"^(\d+[\.\)]|\-|\*|•)\s*", "", line).strip()
-            if not clean_line or clean_line.startswith("📋") or clean_line.startswith("━") or clean_line.startswith("📅"):
+            if not clean_line or clean_line.startswith("📋") or clean_line.startswith("━") or clean_line.startswith("📅") or clean_line == "[NON_SCHEDULE_IMAGE]":
                 continue
 
             status = self._detect_task_status(clean_line)
