@@ -12,7 +12,7 @@ class OCRService:
         self.provider = provider
         self.api_key = api_key
 
-    def process_image(self, image_bytes: bytes, user_id: str, user_name: str = "Anonymous", image_path: Optional[str] = None) -> OCRResult:
+    def process_image(self, image_bytes: bytes, user_id: str, user_name: str = "น้องบอท", image_path: Optional[str] = None) -> OCRResult:
         """
         Extracts full schedule text from image and automatically parses structured work logs with dates & times.
         """
@@ -58,12 +58,12 @@ class OCRService:
             current_year = today.year
 
             prompt = (
-                f"คุณคือผู้ช่วย AI ประจำสำนักงานพาณิชย์จังหวัดเพชรบุรี\n"
+                f"คุณคือ 'น้องบอท' ผู้ช่วย AI ประจำสำนักงานพาณิชย์จังหวัดเพชรบุรี (ตอบเป็นภาษาไทยสุภาพ เป็นผู้ชาย ลงท้ายด้วยครับ/ครับผม)\n"
                 f"บริบท: วันนี้คือวันที่ {today.isoformat()} (พ.ศ. {current_year + 543})\n\n"
-                f"หน้าที่ของคุณ:\n"
+                f"คำสั่ง:\n"
                 f"1. อ่านตารางงาน/เอกสาร/ตารางนัดหมายทั้งหมดในรูปภาพอย่างละเอียด\n"
                 f"2. สรุปรายการภารกิจทั้งหมดในรูปภาพออกมาให้อ่านง่าย ชัดเจน แยกเป็นรายวัน (ระบุวันที่, เวลา, กิจกรรม, สถานที่/ผู้รับผิดชอบ)\n"
-                f"3. ในตอนท้ายสุดของคำตอบ ให้แนบ JSON Array ของรายการงานทั้งหมดในรูปแบบนี้:\n"
+                f"3. ในตอนท้ายสุดของข้อความ ให้แนบ JSON Block ของรายการงานทั้งหมดในรูปแบบนี้:\n"
                 f"```json\n"
                 f"[\n"
                 f'  {{"date": "YYYY-MM-DD", "time": "เวลา เช่น 09:00", "task": "ชื่องานและรายละเอียด", "status": "DONE หรือ IN_PROGRESS"}}\n'
@@ -81,9 +81,13 @@ class OCRService:
                         raw_output = response.text.strip()
                         tasks = self._parse_json_tasks(raw_output, user_id, user_name, image_path)
                         
+                        # Clean JSON codeblock out of user response
                         user_summary_text = re.sub(r"```(?:json)?\s*\[[\s\S]*?\]\s*```", "", raw_output).strip()
+                        # Clean any leftover markdown headers like ### **JSON Array...
+                        user_summary_text = re.sub(r"###\s*\*\*.*JSON.*?\*\*", "", user_summary_text, flags=re.IGNORECASE).strip()
+                        
                         if not user_summary_text:
-                            lines = ["📋 สรุปตารางภารกิจที่พบในรูปภาพ:\n━━━━━━━━━━━━━━━━━━"]
+                            lines = ["📋 น้องบอทสรุปตารางภารกิจที่พบในรูปภาพให้แล้วครับผม:\n━━━━━━━━━━━━━━━━━━"]
                             for t in tasks:
                                 time_str = f"[{t.scheduled_time}] " if t.scheduled_time else ""
                                 lines.append(f"• ({t.log_date.strftime('%d/%m')}) {time_str}{t.task_text}")
@@ -145,7 +149,7 @@ class OCRService:
             logger.warning(f"Could not parse JSON tasks from OCR: {e}")
         return items
 
-    def parse_text_to_work_items(self, text: str, user_id: str, user_name: str = "Anonymous", source: str = "text", image_path: Optional[str] = None) -> List[WorkItem]:
+    def parse_text_to_work_items(self, text: str, user_id: str, user_name: str = "น้องบอท", source: str = "text", image_path: Optional[str] = None) -> List[WorkItem]:
         lines = [line.strip() for line in text.split("\n") if line.strip()]
         items: List[WorkItem] = []
 

@@ -61,14 +61,13 @@ class LineWebhookHandler:
 
         if event_type == "join":
             welcome_msg = (
-                "👋 สวัสดีครับ! ผมคือบอทแจ้งตารางงานและสรุปภารกิจ\n"
-                "สำนักงานพาณิชย์จังหวัดเพชรบุรี\n"
+                "👋 สวัสดีครับผม! น้องบอทพร้อมช่วยงานสำนักงานพาณิชย์จังหวัดเพชรบุรีแล้วครับ\n"
                 "━━━━━━━━━━━━━━━━━━\n"
                 "📌 วิธีใช้งานง่ายๆ:\n"
-                "• ส่งรูปตารางงาน ➡️ บอทจะสรุปและบันทึกข้อมูลทั้งหมดทันที\n"
-                "• พิมพ์ 'วันนี้' ➡️ ดูตารางภารกิจของวันนี้\n"
-                "• พิมพ์ 'พรุ่งนี้' ➡️ ดูตารางภารกิจของวันพรุ่งนี้\n"
-                "• พิมพ์ 'สรุป' ➡️ ดูรายงานสรุปผลงานรวม"
+                "• ส่งรูปถ่ายตารางงาน ➡️ น้องบอทจะสรุปและบันทึกข้อมูลเข้าระบบให้ทันทีครับ\n"
+                "• พิมพ์ 'วันนี้' ➡️ ดูตารางภารกิจประจำวันนี้\n"
+                "• พิมพ์ 'พรุ่งนี้' ➡️ ดูตารางภารกิจประจำวันพรุ่งนี้\n"
+                "• พิมพ์ 'สรุป' ➡️ ดูสรุปผลงานรวม"
             )
             if reply_token:
                 self.line_client.reply_text(reply_token, welcome_msg)
@@ -93,20 +92,7 @@ class LineWebhookHandler:
         
         lower_text = text.lower().strip()
 
-        # 1. Help & Greeting
-        if lower_text in ["/help", "/start", "วิธีใช้", "help", "?", "เมนู", "คำสั่ง"]:
-            help_msg = (
-                "🤖 คำสั่งใช้งานบอทพาณิชย์จังหวัดเพชรบุรี\n"
-                "━━━━━━━━━━━━━━━━━━\n"
-                "• พิมพ์ 'วันนี้' ➡️ ดูตารางงานวันนี้\n"
-                "• พิมพ์ 'พรุ่งนี้' ➡️ ดูตารางงานวันพรุ่งนี้\n"
-                "• พิมพ์ 'สรุป' ➡️ ดูรายงานผลงานรวมวันนี้\n"
-                "• ส่งรูปถ่ายตารางงาน ➡️ บอทจะสรุปทั้งหมดและบันทึกอัตโนมัติ"
-            )
-            self.line_client.reply_text(reply_token, help_msg)
-            return
-
-        # 2. Tomorrow's Schedule ("พรุ่งนี้")
+        # 1. Tomorrow's Schedule ("พรุ่งนี้")
         if any(k == lower_text for k in ["พรุ่งนี้", "ตารางพรุ่งนี้", "งานพรุ่งนี้", "ภารกิจพรุ่งนี้", "/tomorrow", "พรุ่งนี"]):
             tomorrow = date.today() + timedelta(days=1)
             items = self.repo.get_items_by_date(tomorrow)
@@ -114,7 +100,7 @@ class LineWebhookHandler:
             self.line_client.reply_text(reply_token, briefing)
             return
 
-        # 3. Today's Schedule ("วันนี้")
+        # 2. Today's Schedule ("วันนี้")
         if any(k == lower_text for k in ["วันนี้", "ตารางวันนี้", "งานวันนี้", "ตารางงาน", "ตาราง", "ภารกิจ", "/today", "/schedule", "/ตาราง"]):
             today = date.today()
             items = self.repo.get_items_by_date(today)
@@ -122,7 +108,7 @@ class LineWebhookHandler:
             self.line_client.reply_text(reply_token, briefing)
             return
 
-        # 4. Summary ("สรุป")
+        # 3. Summary ("สรุป")
         if any(k == lower_text for k in ["สรุป", "สรุปงาน", "รายงาน", "/summary", "/สรุป"]):
             today = date.today()
             items = self.repo.get_items_by_date(today)
@@ -130,7 +116,7 @@ class LineWebhookHandler:
             self.line_client.reply_text(reply_token, report.formatted_line_message)
             return
 
-        # 5. Yesterday's Summary ("เมื่อวาน")
+        # 4. Yesterday's Summary ("เมื่อวาน")
         if any(k == lower_text for k in ["เมื่อวาน", "สรุปเมื่อวาน", "งานเมื่อวาน", "/yesterday"]):
             yesterday = date.today() - timedelta(days=1)
             items = self.repo.get_items_by_date(yesterday)
@@ -138,40 +124,33 @@ class LineWebhookHandler:
             self.line_client.reply_text(reply_token, report.formatted_line_message)
             return
 
-        # 6. Bot Status ("บอท", "สวัสดี")
-        if lower_text in ["บอท", "bot", "เทส", "test", "สวัสดี", "hi", "hello"]:
-            msg = (
-                "👋 บอทพร้อมทำงานครับพี่ป๋อ!\n"
+        # 5. Help & Guide ("เมนู", "วิธีใช้")
+        if lower_text in ["/help", "/start", "วิธีใช้", "help", "?", "เมนู", "คำสั่ง"]:
+            help_msg = (
+                "🤖 น้องบอท (พาณิชย์จังหวัดเพชรบุรี)\n"
                 "━━━━━━━━━━━━━━━━━━\n"
                 "• พิมพ์ 'วันนี้' ➡️ ดูตารางงานวันนี้\n"
                 "• พิมพ์ 'พรุ่งนี้' ➡️ ดูตารางงานวันพรุ่งนี้\n"
-                "• หรือส่งรูปภาพตารางงานเพื่อสแกนสรุปได้เลยครับ ✨"
+                "• พิมพ์ 'สรุป' ➡️ ดูสรุปผลงานรวม\n"
+                "• ส่งรูปตารางงาน ➡️ น้องบอทจะสรุปและบันทึกอัตโนมัติครับผม"
+            )
+            self.line_client.reply_text(reply_token, help_msg)
+            return
+
+        # 6. Greeting / Bot Status
+        if lower_text in ["บอท", "bot", "เทส", "test", "สวัสดี", "น้องบอท", "hi", "hello"]:
+            msg = (
+                "👋 น้องบอทพร้อมทำงานครับผม!\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                "• พิมพ์ 'วันนี้' ➡️ ดูตารางภารกิจวันนี้\n"
+                "• พิมพ์ 'พรุ่งนี้' ➡️ ดูตารางภารกิจวันพรุ่งนี้\n"
+                "• ส่งรูปถ่ายตารางงาน เพื่อให้น้องบอทสรุปและบันทึกได้เลยครับ ✨"
             )
             self.line_client.reply_text(reply_token, msg)
             return
 
-        # 7. Regular Work Log entry (only if explicitly formatted or longer text)
-        items = self.ocr_service.parse_text_to_work_items(
-            text=text,
-            user_id=user_id,
-            user_name=user_name,
-            source="text"
-        )
-        if items:
-            saved_items = self.repo.add_work_items_batch(items)
-            reply_lines = [
-                f"✅ บันทึกงานเรียบร้อยแล้ว ({len(saved_items)} รายการ):",
-                "━━━━━━━━━━━━━━━━━━"
-            ]
-            for item in saved_items[:10]:
-                status_icon = "✅" if item.status == TaskStatus.DONE else ("⏳" if item.status == TaskStatus.IN_PROGRESS else "⚠️")
-                reply_lines.append(f"{status_icon} [{item.status.value.upper()}] {item.task_text}")
-            
-            if len(saved_items) > 10:
-                reply_lines.append(f"... และอีก {len(saved_items) - 10} รายการ")
-
-            reply_lines.append("\n💡 พิมพ์ 'วันนี้' หรือ 'พรุ่งนี้' เพื่อดูตารางงาน")
-            self.line_client.reply_text(reply_token, "\n".join(reply_lines))
+        # Note: Do NOT reply or add tasks for random captions / general group chats
+        logger.info(f"Ignoring general non-command text: '{text[:50]}'")
 
     def _handle_image_message(self, reply_token: Optional[str], user_id: str, user_name: str, message_id: str):
         if not reply_token:
@@ -191,7 +170,7 @@ class LineWebhookHandler:
         if not extracted or extracted.startswith("[Error"):
             self.line_client.reply_text(
                 reply_token,
-                "⚠️ ไม่สามารถอ่านข้อความจากรูปภาพได้ในขณะนี้ กรุณาลองส่งใหม่อีกครั้งครับ"
+                "⚠️ น้องบอทไม่สามารถอ่านข้อความจากรูปภาพนี้ได้ กรุณาลองส่งใหม่อีกครั้งนะครับผม"
             )
             return
 
@@ -204,7 +183,7 @@ class LineWebhookHandler:
             extracted,
             "",
             "━━━━━━━━━━━━━━━━━━",
-            f"✅ บันทึกตารางงานเข้าสู่ระบบเรียบร้อยแล้ว ({len(ocr_result.detected_tasks)} รายการ)",
+            f"✅ น้องบอทบันทึกตารางภารกิจเข้าระบบเรียบร้อยแล้วครับผม ({len(ocr_result.detected_tasks)} รายการ)",
             "💡 พิมพ์ 'วันนี้' หรือ 'พรุ่งนี้' เพื่อดูภารกิจเฉพาะวันได้เลยครับ"
         ]
         self.line_client.reply_text(reply_token, "\n".join(reply_lines).strip())

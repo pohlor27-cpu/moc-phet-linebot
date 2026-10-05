@@ -13,10 +13,11 @@ class DailySummarizer:
 
         if not items:
             formatted_msg = (
-                f"📊 สรุปรายงานประจำ{date_label} ({target_date.strftime('%d/%m/%Y')})\n"
+                f"📊 น้องบอทสรุปผลงานประจำ{date_label} ({target_date.strftime('%d/%m/%Y')})\n"
+                f"สำนักงานพาณิชย์จังหวัดเพชรบุรี\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"❌ ยังไม่มีการบันทึกรายการงานสำหรับ{date_label}\n\n"
-                f"💡 สามารถพิมพ์ส่งข้อความ หรือส่งรูปภาพตารางงานได้ตลอดเวลาครับ"
+                f"✨ ยังไม่มีรายการงานที่บันทึกไว้สำหรับ{date_label}ครับผม\n\n"
+                f"💡 สามารถส่งรูปภาพตารางงานเพื่อบันทึกงานได้ตลอดเวลาครับ"
             )
             return DailySummaryReport(
                 report_date=target_date,
@@ -33,7 +34,7 @@ class DailySummarizer:
         users_map: Dict[str, Dict] = {}
         for item in items:
             uid = item.user_id
-            uname = item.user_name or "Anonymous"
+            uname = item.user_name or "น้องบอท"
             if uid not in users_map:
                 users_map[uid] = {
                     "name": uname,
@@ -67,10 +68,10 @@ class DailySummarizer:
         blocker_count = sum(len(u["blockers"]) for u in users_map.values())
 
         msg_lines = [
-            f"📊 สรุปงานประจำ{date_label} ({target_date.strftime('%d/%m/%Y')})",
+            f"📊 น้องบอทสรุปผลงานประจำ{date_label} ({target_date.strftime('%d/%m/%Y')})",
+            f"สำนักงานพาณิชย์จังหวัดเพชรบุรี",
             f"━━━━━━━━━━━━━━━━━━",
-            f"👥 ผู้รายงาน: {len(users_map)} คน | 📝 รวม {total_tasks} รายการ",
-            f"✅ สำเร็จ: {completed_count} | ⏳ กำลังทำ: {in_progress_count} | ⚠️ ปัญหา: {blocker_count}",
+            f"📝 รวมทั้งหมด {total_tasks} ภารกิจ",
             f"━━━━━━━━━━━━━━━━━━\n"
         ]
 
@@ -86,34 +87,16 @@ class DailySummarizer:
             )
             user_summaries.append(user_sum)
 
-            msg_lines.append(f"👤 {data['name']}:")
-            if data["done"]:
-                msg_lines.append("  ✅ งานที่เสร็จแล้ว:")
-                for t in data["done"][:20]:
-                    msg_lines.append(f"    • {t}")
-                if len(data["done"]) > 20:
-                    msg_lines.append(f"    ... และอีก {len(data['done']) - 20} รายการ")
+            all_tasks = data["done"] + data["in_progress"] + data["blockers"] + data["notes"]
+            for idx, t in enumerate(all_tasks[:25], 1):
+                msg_lines.append(f"{idx}. 📌 {t}")
 
-            if data["in_progress"]:
-                msg_lines.append("  ⏳ กำลังดำเนินการ:")
-                for t in data["in_progress"][:20]:
-                    msg_lines.append(f"    • {t}")
-                if len(data["in_progress"]) > 20:
-                    msg_lines.append(f"    ... และอีก {len(data['in_progress']) - 20} รายการ")
-
-            if data["blockers"]:
-                msg_lines.append("  ⚠️ ติดปัญหา/บล็อกเกอร์:")
-                for t in data["blockers"][:10]:
-                    msg_lines.append(f"    • {t}")
-
-            if data["notes"]:
-                msg_lines.append("  📌 บันทึกเพิ่มเติม:")
-                for t in data["notes"][:10]:
-                    msg_lines.append(f"    • {t}")
+            if len(all_tasks) > 25:
+                msg_lines.append(f"... และรายการอื่นๆ อีก {len(all_tasks) - 25} รายการ")
             msg_lines.append("")
 
         msg_lines.append("━━━━━━━━━━━━━━━━━━")
-        msg_lines.append("🚀 พิมพ์ 'ตารางงาน' เพื่อดูภารกิจ หรือส่งข้อความ/รูปภาพเพื่อบันทึกงาน")
+        msg_lines.append("💡 พิมพ์ 'พรุ่งนี้' เพื่อดูตารางภารกิจวันพรุ่งนี้ครับผม")
 
         return DailySummaryReport(
             report_date=target_date,
@@ -133,14 +116,14 @@ class DailySummarizer:
 
         today = date.today()
         if target_date == today:
-            title_prefix = "☀️ อรุณสวัสดิ์ครับ! ตารางภารกิจประจำวันนี้"
-            empty_prefix = "✨ วันนี้ยังไม่มีกำหนดการหรือตารางงานที่บันทึกไว้"
+            title_prefix = "☀️ อรุณสวัสดิ์ครับผม! ตารางภารกิจประจำวันนี้"
+            empty_prefix = "✨ วันนี้ยังไม่มีกำหนดการหรือตารางงานที่บันทึกไว้ครับ"
         elif target_date == today + timedelta(days=1):
             title_prefix = "📅 ตารางภารกิจประจำวันพรุ่งนี้"
-            empty_prefix = "✨ วันพรุ่งนี้ยังไม่มีกำหนดการหรือตารางงานที่บันทึกไว้"
+            empty_prefix = "✨ วันพรุ่งนี้ยังไม่มีกำหนดการหรือตารางงานที่บันทึกไว้ครับ"
         else:
             title_prefix = f"📅 ตารางภารกิจประจำวันที่ {target_date.strftime('%d/%m/%Y')}"
-            empty_prefix = f"✨ วันที่ {target_date.strftime('%d/%m/%Y')} ยังไม่มีกำหนดการที่บันทึกไว้"
+            empty_prefix = f"✨ วันที่ {target_date.strftime('%d/%m/%Y')} ยังไม่มีกำหนดการที่บันทึกไว้ครับ"
 
         if not items:
             return (
@@ -148,7 +131,7 @@ class DailySummarizer:
                 f"สำนักงานพาณิชย์จังหวัดเพชรบุรี\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"{empty_prefix}\n\n"
-                f"💡 คุณสามารถส่งรูปภาพตารางงานหรือพิมพ์ระบุเพื่อบันทึกงานล่วงหน้าได้ครับ!"
+                f"💡 สามารถส่งรูปภาพตารางงานเพื่อให้น้องบอทบันทึกข้อมูลได้เลยครับผม!"
             )
 
         # Deduplicate tasks
@@ -164,20 +147,19 @@ class DailySummarizer:
             f"{title_prefix} ({target_date.strftime('%d/%m/%Y')})",
             f"สำนักงานพาณิชย์จังหวัดเพชรบุรี",
             f"━━━━━━━━━━━━━━━━━━",
-            f"📋 รายการภารกิจและตารางงาน ({len(unique_items)} รายการ):",
+            f"📋 รายการภารกิจทั้งหมด ({len(unique_items)} รายการ):",
             ""
         ]
 
         for idx, item in enumerate(unique_items[:30], 1):
             time_tag = f"[{item.scheduled_time}] " if item.scheduled_time else ""
-            user_tag = f" ({item.user_name})" if item.user_name and item.user_name != "Anonymous" else ""
-            lines.append(f"{idx}. 📌 {time_tag}{item.task_text}{user_tag}")
+            lines.append(f"{idx}. 📌 {time_tag}{item.task_text}")
 
         if len(unique_items) > 30:
             lines.append(f"\n... และมีรายการอื่นๆ อีก {len(unique_items) - 30} รายการ")
 
         lines.append("")
         lines.append("━━━━━━━━━━━━━━━━━━")
-        lines.append("💪 ขอให้ทุกคนทำงานอย่างราบรื่นและมีพลังตลอดทั้งวันครับ!")
+        lines.append("💪 น้องบอทขอให้ทุกคนทำงานอย่างราบรื่นและมีความสุขตลอดทั้งวันครับผม!")
 
         return "\n".join(lines).strip()

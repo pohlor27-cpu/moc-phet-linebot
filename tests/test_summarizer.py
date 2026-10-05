@@ -8,7 +8,7 @@ def test_generate_daily_report_empty():
     report = summarizer.generate_daily_report([], date(2026, 10, 5))
     assert report.total_users == 0
     assert report.total_tasks == 0
-    assert "ยังไม่มีการบันทึกรายการงาน" in report.formatted_line_message
+    assert "ยังไม่มีรายการงาน" in report.formatted_line_message
 
 def test_generate_daily_report_multi_users():
     summarizer = DailySummarizer()
@@ -26,10 +26,8 @@ def test_generate_daily_report_multi_users():
     assert report.completed_count == 2
     assert report.in_progress_count == 1
     assert report.blocker_count == 1
-    
-    assert "Alice" in report.formatted_line_message
-    assert "Bob" in report.formatted_line_message
-    assert "✅ สำเร็จ: 2" in report.formatted_line_message
+    assert "Design DB" in report.formatted_line_message
+    assert "Deploy Server" in report.formatted_line_message
 
 def test_generate_morning_briefing():
     summarizer = DailySummarizer()
