@@ -82,4 +82,4 @@ def test_handle_image_ocr(setup_handler):
     items = repo.get_items_by_date(date.today())
     assert len(items) > 0
     assert len(client.sent_messages) == 1
-    assert "บันทึกข้อมูลตารางงานเรียบร้อยแล้วครับ" in client.sent_messages[0]["text"]
+    assert "บันทึกตารางงานเข้าสู่ระบบเรียบร้อยแล้ว" in client.sent_messages[0]["text"]

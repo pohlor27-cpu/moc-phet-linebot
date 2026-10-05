@@ -1,7 +1,7 @@
 import re
 import json
 import logging
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime, date, timedelta
 from domain.models import OCRResult, WorkItem, TaskStatus
 
@@ -14,28 +14,28 @@ class OCRService:
 
     def process_image(self, image_bytes: bytes, user_id: str, user_name: str = "Anonymous", image_path: Optional[str] = None) -> OCRResult:
         """
-        Extracts text from image and automatically parses structured work logs with dates & times.
+        Extracts full schedule text from image and automatically parses structured work logs with dates & times.
         """
         if self.provider == "gemini" and self.api_key and self.api_key != "your_gemini_api_key_here":
-            raw_text, detected_tasks = self._gemini_vision_extract_structured(image_bytes, user_id, user_name, image_path)
+            full_summary_text, detected_tasks = self._gemini_vision_extract_structured(image_bytes, user_id, user_name, image_path)
         else:
-            raw_text = self._mock_ocr_extract(image_bytes)
-            detected_tasks = self.parse_text_to_work_items(raw_text, user_id, user_name, source="ocr", image_path=image_path)
+            full_summary_text = self._mock_ocr_extract(image_bytes)
+            detected_tasks = self.parse_text_to_work_items(full_summary_text, user_id, user_name, source="ocr", image_path=image_path)
 
-        if not detected_tasks and raw_text:
-            detected_tasks = self.parse_text_to_work_items(raw_text, user_id, user_name, source="ocr", image_path=image_path)
+        if not detected_tasks and full_summary_text:
+            detected_tasks = self.parse_text_to_work_items(full_summary_text, user_id, user_name, source="ocr", image_path=image_path)
 
         return OCRResult(
-            extracted_text=raw_text,
+            extracted_text=full_summary_text,
             detected_tasks=detected_tasks,
-            confidence=0.95 if raw_text else 0.0,
+            confidence=0.95 if full_summary_text else 0.0,
             processed_at=datetime.now()
         )
 
     def _mock_ocr_extract(self, image_bytes: bytes) -> str:
         try:
             decoded = image_bytes.decode("utf-8", errors="ignore")
-            if any(k in decoded for k in ["งาน", "task", "เสร็จ", "กำลังทำ", "ติดปัญหา", "Todo", "Done"]):
+            if any(k in decoded for k in ["งาน", "task", "เสร็จ", "กำลังทำ", "ติดปัญหา", "Todo", "Done", "Built", "FastAPI"]):
                 return decoded.strip()
         except Exception:
             pass
@@ -45,7 +45,7 @@ class OCRService:
             "3. [ติดปัญหา] รออนุมัติ Line Messaging API Token"
         )
 
-    def _gemini_vision_extract_structured(self, image_bytes: bytes, user_id: str, user_name: str, image_path: Optional[str]):
+    def _gemini_vision_extract_structured(self, image_bytes: bytes, user_id: str, user_name: str, image_path: Optional[str]) -> Tuple[str, List[WorkItem]]:
         try:
             import io
             from PIL import Image
@@ -56,20 +56,20 @@ class OCRService:
             
             today = date.today()
             current_year = today.year
-            current_month = today.month
 
             prompt = (
-                f"คุณคือผู้เชี่ยวชาญด้าน OCR ถอดข้อความตารางงาน เอกสารราชการ และตารางภารกิจประจำวัน\n"
+                f"คุณคือผู้ช่วย AI ประจำสำนักงานพาณิชย์จังหวัดเพชรบุรี\n"
                 f"บริบท: วันนี้คือวันที่ {today.isoformat()} (พ.ศ. {current_year + 543})\n\n"
-                f"คำสั่ง:\n"
-                f"1. อ่านและถอดข้อความทั้งหมดในรูปภาพให้ครบถ้วน\n"
-                f"2. แยกรายการภารกิจแต่ละรายการออกมาในรูปแบบ JSON Array ต่อไปนี้ (ห้ามใส่ Markdown อื่นนอกจาก JSON block):\n"
+                f"หน้าที่ของคุณ:\n"
+                f"1. อ่านตารางงาน/เอกสาร/ตารางนัดหมายทั้งหมดในรูปภาพอย่างละเอียด\n"
+                f"2. สรุปรายการภารกิจทั้งหมดในรูปภาพออกมาให้อ่านง่าย ชัดเจน แยกเป็นรายวัน (ระบุวันที่, เวลา, กิจกรรม, สถานที่/ผู้รับผิดชอบ)\n"
+                f"3. ในตอนท้ายสุดของคำตอบ ให้แนบ JSON Array ของรายการงานทั้งหมดในรูปแบบนี้:\n"
                 f"```json\n"
                 f"[\n"
-                f'  {{"date": "YYYY-MM-DD", "time": "HH:MM หรือ ช่วงเวลา", "task": "รายละเอียดภารกิจ/กิจกรรม", "status": "DONE หรือ IN_PROGRESS หรือ BLOCKER"}}\n'
+                f'  {{"date": "YYYY-MM-DD", "time": "เวลา เช่น 09:00", "task": "ชื่องานและรายละเอียด", "status": "DONE หรือ IN_PROGRESS"}}\n'
                 f"]\n"
                 f"```\n"
-                f"หมายเหตุเรื่องวันที่: หากในตารางระบุวันที่ เช่น '5 ต.ค.', '6 ต.ค. 69' ให้แปลงเป็น ค.ศ. (YYYY-MM-DD) ให้ถูกต้อง เช่น '2026-10-05', '2026-10-06' หากไม่ระบุวันที่ ให้ใช้วันที่วันนี้ ({today.isoformat()})"
+                f"หมายเหตุ: แปลงวันที่ เช่น '5 ต.ค.', '6 ต.ค. 69' เป็นปี ค.ศ. YYYY-MM-DD (เช่น 2026-10-05, 2026-10-06)"
             )
             
             models_to_try = ["gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
@@ -81,15 +81,15 @@ class OCRService:
                         raw_output = response.text.strip()
                         tasks = self._parse_json_tasks(raw_output, user_id, user_name, image_path)
                         
-                        # Generate clean readable summary for Line reply
-                        clean_lines = []
-                        for t in tasks:
-                            time_str = f"[{t.scheduled_time}] " if t.scheduled_time else ""
-                            date_str = f"({t.log_date.strftime('%d/%m')}) " if t.log_date != today else ""
-                            clean_lines.append(f"• {date_str}{time_str}{t.task_text}")
+                        user_summary_text = re.sub(r"```(?:json)?\s*\[[\s\S]*?\]\s*```", "", raw_output).strip()
+                        if not user_summary_text:
+                            lines = ["📋 สรุปตารางภารกิจที่พบในรูปภาพ:\n━━━━━━━━━━━━━━━━━━"]
+                            for t in tasks:
+                                time_str = f"[{t.scheduled_time}] " if t.scheduled_time else ""
+                                lines.append(f"• ({t.log_date.strftime('%d/%m')}) {time_str}{t.task_text}")
+                            user_summary_text = "\n".join(lines)
                         
-                        readable_text = "\n".join(clean_lines) if clean_lines else raw_output
-                        return readable_text, tasks
+                        return user_summary_text, tasks
                 except Exception as e:
                     if "429" in str(e) or "quota" in str(e).lower() or "not found" in str(e).lower():
                         continue
@@ -105,7 +105,6 @@ class OCRService:
     def _parse_json_tasks(self, raw_text: str, user_id: str, user_name: str, image_path: Optional[str]) -> List[WorkItem]:
         items: List[WorkItem] = []
         try:
-            # Extract JSON block
             json_match = re.search(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", raw_text)
             json_str = json_match.group(1) if json_match else raw_text
             if "[" in json_str and "]" in json_str:
@@ -152,7 +151,7 @@ class OCRService:
 
         for line in lines:
             clean_line = re.sub(r"^(\d+[\.\)]|\-|\*|•)\s*", "", line).strip()
-            if not clean_line:
+            if not clean_line or clean_line.startswith("📋") or clean_line.startswith("━") or clean_line.startswith("📅"):
                 continue
 
             status = self._detect_task_status(clean_line)
