@@ -60,10 +60,10 @@ class OCRService:
             prompt = (
                 f"คุณคือ 'น้องบอท' ผู้ช่วย AI ประจำสำนักงานพาณิชย์จังหวัดเพชรบุรี (ตอบเป็นภาษาไทยสุภาพ เป็นผู้ชาย ลงท้ายด้วยครับ/ครับผม)\n"
                 f"บริบท: วันนี้คือวันที่ {today.isoformat()} (พ.ศ. {current_year + 543})\n\n"
-                f"คำสั่ง:\n"
+                f"หน้าที่ของคุณ:\n"
                 f"1. อ่านตารางงาน/เอกสาร/ตารางนัดหมายทั้งหมดในรูปภาพอย่างละเอียด\n"
                 f"2. สรุปรายการภารกิจทั้งหมดในรูปภาพออกมาให้อ่านง่าย ชัดเจน แยกเป็นรายวัน (ระบุวันที่, เวลา, กิจกรรม, สถานที่/ผู้รับผิดชอบ)\n"
-                f"3. ในตอนท้ายสุดของข้อความ ให้แนบ JSON Block ของรายการงานทั้งหมดในรูปแบบนี้:\n"
+                f"3. ในตอนท้ายสุดของคำตอบ ให้แนบ JSON Array ของรายการงานทั้งหมดในรูปแบบนี้:\n"
                 f"```json\n"
                 f"[\n"
                 f'  {{"date": "YYYY-MM-DD", "time": "เวลา เช่น 09:00", "task": "ชื่องานและรายละเอียด", "status": "DONE หรือ IN_PROGRESS"}}\n'
@@ -72,7 +72,16 @@ class OCRService:
                 f"หมายเหตุ: แปลงวันที่ เช่น '5 ต.ค.', '6 ต.ค. 69' เป็นปี ค.ศ. YYYY-MM-DD (เช่น 2026-10-05, 2026-10-06)"
             )
             
-            models_to_try = ["gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
+            # Prioritize verified active models with available quota
+            models_to_try = [
+                "gemini-3.1-flash-lite",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-flash-lite-latest",
+                "gemini-3-flash-preview",
+                "gemma-4-26b-a4b-it"
+            ]
+            
             for model_name in models_to_try:
                 try:
                     model = genai.GenerativeModel(model_name)
@@ -81,9 +90,8 @@ class OCRService:
                         raw_output = response.text.strip()
                         tasks = self._parse_json_tasks(raw_output, user_id, user_name, image_path)
                         
-                        # Clean JSON codeblock out of user response
+                        # Clean raw json codeblocks from user reply
                         user_summary_text = re.sub(r"```(?:json)?\s*\[[\s\S]*?\]\s*```", "", raw_output).strip()
-                        # Clean any leftover markdown headers like ### **JSON Array...
                         user_summary_text = re.sub(r"###\s*\*\*.*JSON.*?\*\*", "", user_summary_text, flags=re.IGNORECASE).strip()
                         
                         if not user_summary_text:
@@ -95,9 +103,8 @@ class OCRService:
                         
                         return user_summary_text, tasks
                 except Exception as e:
-                    if "429" in str(e) or "quota" in str(e).lower() or "not found" in str(e).lower():
-                        continue
-                    logger.warning(f"Model {model_name} error: {e}")
+                    logger.warning(f"Model {model_name} failed: {e}")
+                    continue
             
             fallback_text = self._mock_ocr_extract(image_bytes)
             return fallback_text, self.parse_text_to_work_items(fallback_text, user_id, user_name, source="ocr", image_path=image_path)

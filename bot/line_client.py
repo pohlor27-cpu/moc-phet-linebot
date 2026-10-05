@@ -23,7 +23,6 @@ def split_message_chunks(text: str, max_chunk_size: int = 4000, max_messages: in
                 chunks.append("\n".join(current_chunk))
                 current_chunk = []
                 current_len = 0
-            # If a single line itself is longer than max_chunk_size
             while len(line) > max_chunk_size:
                 chunks.append(line[:max_chunk_size])
                 line = line[max_chunk_size:]
@@ -91,19 +90,22 @@ class LineBotClient:
 
     def get_message_content(self, message_id: str) -> bytes:
         if not self.is_configured:
-            # Mock image bytes
             return b"1. [Done] Finished testing OCR\n2. [In Progress] Deploying to server"
 
         try:
             content = self.messaging_api_blob.get_message_content(message_id)
-            return content
+            if isinstance(content, (bytearray, bytes)):
+                return bytes(content)
+            elif hasattr(content, "raw_data"):
+                return bytes(content.raw_data)
+            return bytes(content)
         except Exception as e:
             logger.error(f"Error fetching message content {message_id}: {e}")
             return b""
 
     def get_user_display_name(self, user_id: str, group_id: Optional[str] = None) -> str:
         if not self.is_configured or not user_id or user_id == "unknown_user":
-            return f"User_{user_id[-4:]}" if user_id else "Anonymous"
+            return "ผู้ใช้"
 
         try:
             if group_id:
@@ -113,4 +115,4 @@ class LineBotClient:
                 profile = self.messaging_api.get_profile(user_id=user_id)
                 return profile.display_name
         except Exception:
-            return f"User_{user_id[-4:]}"
+            return "ผู้ใช้"
