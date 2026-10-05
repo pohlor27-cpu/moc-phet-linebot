@@ -2,7 +2,7 @@ import hmac
 import hashlib
 import base64
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, Any, Optional
 
 from domain.models import WorkItem, TaskStatus
@@ -65,10 +65,11 @@ class LineWebhookHandler:
                 "สำนักงานพาณิชย์จังหวัดเพชรบุรี\n"
                 "━━━━━━━━━━━━━━━━━━\n"
                 "📌 คำสั่งและวิธีใช้งาน:\n"
-                "• พิมพ์ /ตาราง หรือ 'ตารางงาน' เพื่อดูภารกิจวันนี้\n"
-                "• พิมพ์ /summary หรือ 'สรุป' เพื่อดูรายงานสรุปงาน\n"
-                "• ถ่ายรูปตารางงาน/กระดาษโน้ตส่งเข้าห้อง บอทจะแปลงข้อความและบันทึกให้อัตโนมัติ\n"
-                "• ระบบจะแจ้งตารางงานทุกเช้า 07:30 น. และสรุปงานทุกเย็น 17:05 น."
+                "• พิมพ์ 'ตารางงาน' หรือ /ตาราง : ดูภารกิจวันนี้\n"
+                "• พิมพ์ 'ตารางพรุ่งนี้' : ดูตารางงานวันพรุ่งนี้\n"
+                "• พิมพ์ 'สรุป' หรือ /summary : ดูสรุปผลงานรวมวันนี้\n"
+                "• ถ่ายรูปตารางงาน/กระดาษโน้ตส่งเข้าห้อง บอทจะบันทึกให้อัตโนมัติ\n"
+                "• แจ้งตารางงานทุกเช้า 07:30 น. และสรุปงานทุกเย็น 17:05 น."
             )
             if reply_token:
                 self.line_client.reply_text(reply_token, welcome_msg)
@@ -98,29 +99,43 @@ class LineWebhookHandler:
             help_msg = (
                 "🤖 LINE Daily Work & OCR Bot (พาณิชย์จังหวัดเพชรบุรี)\n"
                 "━━━━━━━━━━━━━━━━━━\n"
-                "📌 วิธีบันทึกงานประจำวัน:\n"
-                "1. พิมพ์ข้อความงาน เช่น:\n"
-                "   • พัฒนาระบบ API เสร็จแล้ว\n"
-                "   • [กำลังทำ] ออกแบบหน้า UI\n"
-                "   • [ติดปัญหา] รอเอกสารลงนาม\n\n"
-                "2. ส่งรูปภาพ (OCR อัตโนมัติ):\n"
-                "   • ถ่ายรูปตารางงานหรือกระดาษโน้ตส่งมาได้เลย บอทจะบันทึกให้ทันที\n\n"
-                "📌 คำสั่งดูรายงาน:\n"
-                "• 'ตารางงาน' หรือ /ตาราง : ดูตารางภารกิจประจำวันนี้ (07:30)\n"
-                "• 'สรุป' หรือ /summary : ดูสรุปผลงานรวมวันนี้ (17:05)"
+                "📌 คำสั่งดูตารางงาน & สรุปผล:\n"
+                "• 'ตารางงาน' / 'งานวันนี้' : ดูตารางภารกิจประจำวันนี้\n"
+                "• 'ตารางพรุ่งนี้' / 'งานพรุ่งนี้' : ดูตารางงานวันพรุ่งนี้\n"
+                "• 'สรุป' / 'สรุปงาน' : ดูรายงานสรุปผลงานรวมวันนี้\n"
+                "• 'สรุปเมื่อวาน' : ดูรายงานสรุปผลงานของเมื่อวาน\n\n"
+                "📌 การบันทึกงาน:\n"
+                "• พิมพ์ข้อความงาน (เช่น [เสร็จแล้ว] ส่งรายงานภาษี)\n"
+                "• ถ่ายรูปตารางงาน/โน้ต ส่งเข้าห้องแชต บอทจะสแกนและบันทึกอัตโนมัติ"
             )
             self.line_client.reply_text(reply_token, help_msg)
             return
 
-        # 2. Daily Schedule / Morning Briefing
-        if lower_text in ["/schedule", "/ตาราง", "ตารางงาน", "ตาราง", "งานวันนี้", "ภารกิจวันนี้", "ภารกิจ"]:
+        # 2. Tomorrow's Schedule
+        if any(k in lower_text for k in ["ตารางพรุ่งนี้", "งานพรุ่งนี้", "ภารกิจพรุ่งนี้", "ตารางงานพรุ่งนี้", "พรุ่งนี้", "/tomorrow"]):
+            tomorrow = date.today() + timedelta(days=1)
+            items = self.repo.get_items_by_date(tomorrow)
+            briefing = self.summarizer.generate_morning_briefing(items, tomorrow)
+            self.line_client.reply_text(reply_token, briefing)
+            return
+
+        # 3. Yesterday's Summary
+        if any(k in lower_text for k in ["เมื่อวาน", "สรุปเมื่อวาน", "งานเมื่อวาน", "/yesterday"]):
+            yesterday = date.today() - timedelta(days=1)
+            items = self.repo.get_items_by_date(yesterday)
+            report = self.summarizer.generate_daily_report(items, yesterday)
+            self.line_client.reply_text(reply_token, report.formatted_line_message)
+            return
+
+        # 4. Today's Schedule
+        if lower_text in ["/schedule", "/ตาราง", "ตารางงาน", "ตาราง", "งานวันนี้", "ภารกิจวันนี้", "ภารกิจ", "วันนี้"]:
             today = date.today()
             items = self.repo.get_items_by_date(today)
             briefing = self.summarizer.generate_morning_briefing(items, today)
             self.line_client.reply_text(reply_token, briefing)
             return
 
-        # 3. Daily Summary / Report
+        # 5. Today's Summary / Report
         if lower_text in ["/summary", "/สรุป", "/today", "สรุปงาน", "สรุป", "รายงาน"]:
             today = date.today()
             items = self.repo.get_items_by_date(today)
@@ -128,19 +143,20 @@ class LineWebhookHandler:
             self.line_client.reply_text(reply_token, report.formatted_line_message)
             return
 
-        # 4. General Bot Status Check
+        # 6. Bot Status Check
         if lower_text in ["บอท", "bot", "เทส", "test", "สวัสดี", "hi", "hello", "อยู่ไหม"]:
             msg = (
                 "👋 บอทพร้อมทำงานครับพี่ป๋อ!\n"
                 "━━━━━━━━━━━━━━━━━━\n"
                 "• พิมพ์ 'ตารางงาน' เพื่อดูภารกิจวันนี้\n"
+                "• พิมพ์ 'ตารางพรุ่งนี้' เพื่อดูตารางวันพรุ่งนี้\n"
                 "• พิมพ์ 'สรุป' เพื่อดูสรุปงานทั้งหมด\n"
-                "• หรือส่งรูปภาพตารางงานเพื่อสแกนบันทึกได้เลยครับ ✨"
+                "• ส่งรูปภาพตารางงานเพื่อบันทึกงานอัตโนมัติ ✨"
             )
             self.line_client.reply_text(reply_token, msg)
             return
 
-        # 5. Regular Work Log entry
+        # 7. Regular Work Log entry
         items = self.ocr_service.parse_text_to_work_items(
             text=text,
             user_id=user_id,
@@ -160,7 +176,7 @@ class LineWebhookHandler:
         if len(saved_items) > 10:
             reply_lines.append(f"... และอีก {len(saved_items) - 10} รายการ")
 
-        reply_lines.append("\n💡 พิมพ์ 'สรุป' เพื่อดูรายงาน หรือ 'ตารางงาน' เพื่อดูภารกิจ")
+        reply_lines.append("\n💡 พิมพ์ 'ตารางงาน' / 'ตารางพรุ่งนี้' หรือ 'สรุป'")
         self.line_client.reply_text(reply_token, "\n".join(reply_lines))
 
     def _handle_image_message(self, reply_token: Optional[str], user_id: str, user_name: str, message_id: str):

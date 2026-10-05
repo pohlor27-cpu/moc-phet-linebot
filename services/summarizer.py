@@ -1,18 +1,21 @@
-from datetime import date
-from typing import List, Dict
+from datetime import date, timedelta
+from typing import List, Dict, Optional
 from domain.models import WorkItem, TaskStatus, DailySummaryReport, UserDailySummary
 
 class DailySummarizer:
     @staticmethod
-    def generate_daily_report(items: List[WorkItem], target_date: date = None) -> DailySummaryReport:
+    def generate_daily_report(items: List[WorkItem], target_date: Optional[date] = None) -> DailySummaryReport:
         if target_date is None:
             target_date = date.today()
 
+        today = date.today()
+        date_label = "วันนี้" if target_date == today else ("เมื่อวาน" if target_date == today - timedelta(days=1) else target_date.strftime('%d/%m/%Y'))
+
         if not items:
             formatted_msg = (
-                f"📊 สรุปรายงานประจำวัน ({target_date.strftime('%d/%m/%Y')})\n"
+                f"📊 สรุปรายงานประจำ{date_label} ({target_date.strftime('%d/%m/%Y')})\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"❌ ยังไม่มีการบันทึกรายการงานสำหรับวันนี้\n\n"
+                f"❌ ยังไม่มีการบันทึกรายการงานสำหรับ{date_label}\n\n"
                 f"💡 สามารถพิมพ์ส่งข้อความ หรือส่งรูปภาพตารางงานได้ตลอดเวลาครับ"
             )
             return DailySummaryReport(
@@ -64,7 +67,7 @@ class DailySummarizer:
         blocker_count = sum(len(u["blockers"]) for u in users_map.values())
 
         msg_lines = [
-            f"📊 สรุปงานประจำวัน ({target_date.strftime('%d/%m/%Y')})",
+            f"📊 สรุปงานประจำ{date_label} ({target_date.strftime('%d/%m/%Y')})",
             f"━━━━━━━━━━━━━━━━━━",
             f"👥 ผู้รายงาน: {len(users_map)} คน | 📝 รวม {total_tasks} รายการ",
             f"✅ สำเร็จ: {completed_count} | ⏳ กำลังทำ: {in_progress_count} | ⚠️ ปัญหา: {blocker_count}",
@@ -110,7 +113,7 @@ class DailySummarizer:
             msg_lines.append("")
 
         msg_lines.append("━━━━━━━━━━━━━━━━━━")
-        msg_lines.append("🚀 พิมพ์ 'ตารางงาน' เพื่อดูภารกิจวันนี้ หรือส่งข้อความ/รูปภาพเพื่อบันทึกงาน")
+        msg_lines.append("🚀 พิมพ์ 'ตารางงาน' เพื่อดูภารกิจ หรือส่งข้อความ/รูปภาพเพื่อบันทึกงาน")
 
         return DailySummaryReport(
             report_date=target_date,
@@ -124,17 +127,28 @@ class DailySummarizer:
         )
 
     @staticmethod
-    def generate_morning_briefing(items: List[WorkItem], target_date: date = None) -> str:
+    def generate_morning_briefing(items: List[WorkItem], target_date: Optional[date] = None) -> str:
         if target_date is None:
             target_date = date.today()
 
+        today = date.today()
+        if target_date == today:
+            title_prefix = "☀️ อรุณสวัสดิ์ครับ! ตารางภารกิจประจำวันนี้"
+            empty_prefix = "✨ วันนี้ยังไม่มีกำหนดการหรือตารางงานที่บันทึกไว้"
+        elif target_date == today + timedelta(days=1):
+            title_prefix = "📅 ตารางภารกิจประจำวันพรุ่งนี้"
+            empty_prefix = "✨ วันพรุ่งนี้ยังไม่มีกำหนดการหรือตารางงานที่บันทึกไว้"
+        else:
+            title_prefix = f"📅 ตารางภารกิจประจำวันที่ {target_date.strftime('%d/%m/%Y')}"
+            empty_prefix = f"✨ วันที่ {target_date.strftime('%d/%m/%Y')} ยังไม่มีกำหนดการที่บันทึกไว้"
+
         if not items:
             return (
-                f"☀️ อรุณสวัสดิ์ครับ! แจ้งตารางภารกิจประจำวัน ({target_date.strftime('%d/%m/%Y')})\n"
+                f"{title_prefix} ({target_date.strftime('%d/%m/%Y')})\n"
                 f"สำนักงานพาณิชย์จังหวัดเพชรบุรี\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"✨ วันนี้ยังไม่มีกำหนดการหรือตารางงานที่บันทึกไว้\n\n"
-                f"💪 ขอให้เป็นวันที่ราบรื่นและมีความสุขกับการทำงานครับ!"
+                f"{empty_prefix}\n\n"
+                f"💡 คุณสามารถส่งรูปภาพตารางงานหรือพิมพ์ระบุเพื่อบันทึกงานล่วงหน้าได้ครับ!"
             )
 
         # Deduplicate tasks
@@ -147,10 +161,10 @@ class DailySummarizer:
                 unique_items.append(item)
 
         lines = [
-            f"☀️ อรุณสวัสดิ์ครับ! ตารางภารกิจประจำวันนี้ ({target_date.strftime('%d/%m/%Y')})",
-            f"สำนักงานพาณิชย์จังหวัดเพชรบุรี (แจ้งเตือน 07:30 น.)",
+            f"{title_prefix} ({target_date.strftime('%d/%m/%Y')})",
+            f"สำนักงานพาณิชย์จังหวัดเพชรบุรี",
             f"━━━━━━━━━━━━━━━━━━",
-            f"📋 รายการภารกิจและตารางงานวันนี้ ({len(unique_items)} รายการ):",
+            f"📋 รายการภารกิจและตารางงาน ({len(unique_items)} รายการ):",
             ""
         ]
 

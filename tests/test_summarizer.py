@@ -33,14 +33,13 @@ def test_generate_daily_report_multi_users():
 
 def test_generate_morning_briefing():
     summarizer = DailySummarizer()
-    today = date(2026, 10, 6)
+    today = date.today()
     items = [
         WorkItem(user_id="U1", user_name="Alice", task_text="ตรวจตลาดสดเทศบาล", scheduled_time="09:00 - 12:00", log_date=today),
         WorkItem(user_id="U2", user_name="Bob", task_text="ประชุมแผนงานพาณิชย์", scheduled_time="13:30", log_date=today)
     ]
     briefing = summarizer.generate_morning_briefing(items, today)
     assert "ตารางภารกิจประจำวันนี้" in briefing
-    assert "07:30 น." in briefing
     assert "ตรวจตลาดสดเทศบาล" in briefing
     assert "ประชุมแผนงานพาณิชย์" in briefing
     assert "09:00 - 12:00" in briefing
