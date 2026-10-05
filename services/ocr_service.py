@@ -40,9 +40,9 @@ class OCRService:
         except Exception:
             pass
         return (
-            "1. [เสร็จแล้ว] พัฒนาระบบสรุปงาน LINE OA\n"
-            "2. [กำลังทำ] เชื่อมต่อ OCR Vision API\n"
-            "3. [ติดปัญหา] รออนุมัติ Line Messaging API Token"
+            "1. [เสร็จแล้ว] พัฒนาระบบสรุปงาน LINE OA (คุณสมชาย [กลุ่ม ยผ.])\n"
+            "2. [กำลังทำ] เชื่อมต่อ OCR Vision API (คุณกรรณิการ์)\n"
+            "3. [ติดปัญหา] รออนุมัติ Line Messaging API Token (คุณสมศรี [กลุ่ม กค.])"
         )
 
     def _gemini_vision_extract_structured(self, image_bytes: bytes, user_id: str, user_name: str, image_path: Optional[str]) -> Tuple[str, List[WorkItem]]:
@@ -60,13 +60,13 @@ class OCRService:
             prompt = (
                 f"คุณคือ 'น้องบอท' ผู้ช่วย AI ประจำสำนักงานพาณิชย์จังหวัดเพชรบุรี (ตอบเป็นภาษาไทยสุภาพ เป็นผู้ชาย ลงท้ายด้วยครับ/ครับผม)\n"
                 f"บริบท: วันนี้คือวันที่ {today.isoformat()} (พ.ศ. {current_year + 543})\n\n"
-                f"หน้าที่ของคุณ:\n"
+                f"คำสั่งสำคัญ:\n"
                 f"1. อ่านตารางงาน/เอกสาร/ตารางนัดหมายทั้งหมดในรูปภาพอย่างละเอียด\n"
-                f"2. สรุปรายการภารกิจทั้งหมดในรูปภาพออกมาให้อ่านง่าย ชัดเจน แยกเป็นรายวัน (ระบุวันที่, เวลา, กิจกรรม, สถานที่/ผู้รับผิดชอบ)\n"
+                f"2. สรุปรายการภารกิจทั้งหมดในรูปภาพออกมาให้อ่านง่าย ชัดเจน แยกเป็นรายวัน โดยต้องระบุ: วันที่, เวลา, กิจกรรม/สถานที่, และ **ชื่อผู้รับผิดชอบหรือกลุ่มงานไว้ท้ายงานทุกรายการเสมอ** เช่น '(คุณสมศรี [กลุ่ม กค.])'\n"
                 f"3. ในตอนท้ายสุดของคำตอบ ให้แนบ JSON Array ของรายการงานทั้งหมดในรูปแบบนี้:\n"
                 f"```json\n"
                 f"[\n"
-                f'  {{"date": "YYYY-MM-DD", "time": "เวลา เช่น 09:00", "task": "ชื่องานและรายละเอียด", "status": "DONE หรือ IN_PROGRESS"}}\n'
+                f'  {{"date": "YYYY-MM-DD", "time": "เวลา เช่น 09:00", "task": "ชื่องานและรายละเอียด", "assignee": "ชื่อผู้รับผิดชอบ/กลุ่มงาน", "status": "DONE หรือ IN_PROGRESS"}}\n'
                 f"]\n"
                 f"```\n"
                 f"หมายเหตุ: แปลงวันที่ เช่น '5 ต.ค.', '6 ต.ค. 69' เป็นปี ค.ศ. YYYY-MM-DD (เช่น 2026-10-05, 2026-10-06)"
@@ -126,6 +126,10 @@ class OCRService:
                     task_text = entry.get("task", "").strip()
                     if not task_text:
                         continue
+                    
+                    assignee = entry.get("assignee", "").strip()
+                    if assignee and assignee not in task_text:
+                        task_text = f"{task_text} ({assignee})"
                     
                     date_val = date.today()
                     date_str = entry.get("date")
