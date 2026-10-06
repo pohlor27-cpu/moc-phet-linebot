@@ -1,3 +1,4 @@
+import re
 import hmac
 import hashlib
 import base64
@@ -59,6 +60,10 @@ class LineWebhookHandler:
         if not user_name and reply_token:
             user_name = self.line_client.get_user_display_name(user_id, group_id)
 
+        # Auto register group ID for broadcast / schedule push
+        if group_id:
+            self.repo.register_group(group_id)
+
         if event_type == "join":
             welcome_msg = (
                 "👋 สวัสดีครับผม! น้องบอทพร้อมช่วยงานสำนักงานพาณิชย์จังหวัดเพชรบุรีแล้วครับ\n"
@@ -92,44 +97,48 @@ class LineWebhookHandler:
         
         lower_text = text.lower().strip()
 
-        # 1. Tomorrow's Schedule ("พรุ่งนี้")
-        if any(k == lower_text for k in ["พรุ่งนี้", "ตารางพรุ่งนี้", "งานพรุ่งนี้", "ภารกิจพรุ่งนี้", "/tomorrow", "พรุ่งนี"]):
+        # Normalize text and strip leading symbols like /, @, #, !, space
+        clean_cmd = re.sub(r"^[!/@#\s]+", "", lower_text).strip()
+
+        # 1. Tomorrow's Schedule ("พรุ่งนี้", "พรุ่งน", "พุ่งนี้")
+        if any(clean_cmd == k or clean_cmd.startswith(k) for k in ["พรุ่งนี้", "พรุ่งนี", "พรุ่งน", "พุ่งนี้", "ตารางพรุ่งนี้", "ตารางพรุ่งน", "งานพรุ่งนี้", "ภารกิจพรุ่งนี้", "tomorrow"]) and len(clean_cmd) <= 25:
             tomorrow = date.today() + timedelta(days=1)
             items = self.repo.get_items_by_date(tomorrow)
             briefing = self.summarizer.generate_morning_briefing(items, tomorrow)
             self.line_client.reply_text(reply_token, briefing)
             return
 
-        # 2. Today's Schedule ("วันนี้")
-        if any(k == lower_text for k in ["วันนี้", "ตารางวันนี้", "งานวันนี้", "ตารางงาน", "ตาราง", "ภารกิจ", "/today", "/schedule", "/ตาราง"]):
+        # 2. Today's Schedule ("วันนี้", "วันน", "วันนี", "ว้นนี้", "ตาราง", "ภารกิจ")
+        today_keywords = ["วันนี้", "วันน", "วันนี", "วันนิ", "ว้นนี้", "ตารางวันนี้", "ตารางวันน", "งานวันนี้", "งานวันน", "ตารางงาน", "ตาราง", "ภารกิจ", "today", "schedule"]
+        if (any(clean_cmd == k for k in today_keywords) or (any(clean_cmd.startswith(k) for k in today_keywords) and len(clean_cmd) <= 20 and "@" not in lower_text)):
             today = date.today()
             items = self.repo.get_items_by_date(today)
             briefing = self.summarizer.generate_morning_briefing(items, today)
             self.line_client.reply_text(reply_token, briefing)
             return
 
-        # 3. Summary ("สรุป")
-        if any(k == lower_text for k in ["สรุป", "สรุปงาน", "รายงาน", "/summary", "/สรุป"]):
+        # 3. Summary ("สรุป", "สรป", "สรุปงาน")
+        if any(clean_cmd == k or clean_cmd.startswith(k) for k in ["สรุป", "สรป", "สรุปงาน", "สรุปวันน", "สรุปวันนี้", "รายงาน", "summary"]) and len(clean_cmd) <= 20:
             today = date.today()
             items = self.repo.get_items_by_date(today)
             report = self.summarizer.generate_daily_report(items, today)
             self.line_client.reply_text(reply_token, report.formatted_line_message)
             return
 
-        # 4. Yesterday's Summary ("เมื่อวาน")
-        if any(k == lower_text for k in ["เมื่อวาน", "สรุปเมื่อวาน", "งานเมื่อวาน", "/yesterday"]):
+        # 4. Yesterday's Summary ("เมื่อวาน", "เมื่อวานนี้")
+        if any(clean_cmd == k or clean_cmd.startswith(k) for k in ["เมื่อวาน", "เมื่อวานนี้", "เมื่อวานน", "สรุปเมื่อวาน", "งานเมื่อวาน", "yesterday"]) and len(clean_cmd) <= 20:
             yesterday = date.today() - timedelta(days=1)
             items = self.repo.get_items_by_date(yesterday)
             report = self.summarizer.generate_daily_report(items, yesterday)
             self.line_client.reply_text(reply_token, report.formatted_line_message)
             return
 
-        # 5. Help & Guide ("เมนู", "วิธีใช้")
-        if lower_text in ["/help", "/start", "วิธีใช้", "help", "?", "เมนู", "คำสั่ง"]:
+        # 5. Help & Guide ("เมนู", "วิธีใช้", "คำสั่ง")
+        if any(clean_cmd == k for k in ["help", "start", "วิธีใช้", "?", "เมนู", "คำสั่ง", "คู่มือ"]):
             help_msg = (
                 "🤖 น้องบอท (พาณิชย์จังหวัดเพชรบุรี)\n"
                 "━━━━━━━━━━━━━━━━━━\n"
-                "• พิมพ์ 'วันนี้' ➡️ ดูตารางงานวันนี้\n"
+                "• พิมพ์ 'วันนี้' หรือ 'วันน' ➡️ ดูตารางงานวันนี้\n"
                 "• พิมพ์ 'พรุ่งนี้' ➡️ ดูตารางงานวันพรุ่งนี้\n"
                 "• พิมพ์ 'สรุป' ➡️ ดูสรุปผลงานรวม\n"
                 "• ส่งรูปตารางงาน ➡️ น้องบอทจะสรุปและบันทึกอัตโนมัติครับผม"
@@ -138,7 +147,7 @@ class LineWebhookHandler:
             return
 
         # 6. Greeting / Bot Status
-        if lower_text in ["บอท", "bot", "เทส", "test", "สวัสดี", "น้องบอท", "hi", "hello"]:
+        if any(clean_cmd == k for k in ["บอท", "bot", "เทส", "test", "สวัสดี", "น้องบอท", "hi", "hello"]):
             msg = (
                 "👋 น้องบอทพร้อมทำงานครับผม!\n"
                 "━━━━━━━━━━━━━━━━━━\n"

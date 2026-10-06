@@ -75,6 +75,7 @@ class DailySummarizer:
             f"━━━━━━━━━━━━━━━━━━\n"
         ]
 
+        global_idx = 1
         for uid, data in users_map.items():
             user_sum = UserDailySummary(
                 user_id=uid,
@@ -88,11 +89,9 @@ class DailySummarizer:
             user_summaries.append(user_sum)
 
             all_tasks = data["done"] + data["in_progress"] + data["blockers"] + data["notes"]
-            for idx, t in enumerate(all_tasks[:25], 1):
-                msg_lines.append(f"{idx}. 📌 {t}")
-
-            if len(all_tasks) > 25:
-                msg_lines.append(f"... และรายการอื่นๆ อีก {len(all_tasks) - 25} รายการ")
+            for t in all_tasks:
+                msg_lines.append(f"{global_idx}. 📌 {t}")
+                global_idx += 1
             msg_lines.append("")
 
         msg_lines.append("━━━━━━━━━━━━━━━━━━")

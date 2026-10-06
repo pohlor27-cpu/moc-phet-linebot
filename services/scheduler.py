@@ -26,7 +26,8 @@ class DailySummaryScheduler:
             today = date.today()
             items = repo.get_items_by_date(today)
             briefing_msg = summarizer.generate_morning_briefing(items, today)
-            broadcast_callback(briefing_msg)
+            group_ids = repo.get_registered_groups()
+            broadcast_callback(briefing_msg, group_ids=group_ids)
 
         m_trigger = CronTrigger(hour=m_hour, minute=m_minute, timezone=self.timezone_str)
         self.scheduler.add_job(
@@ -43,7 +44,8 @@ class DailySummaryScheduler:
             today = date.today()
             items = repo.get_items_by_date(today)
             report = summarizer.generate_daily_report(items, today)
-            broadcast_callback(report.formatted_line_message)
+            group_ids = repo.get_registered_groups()
+            broadcast_callback(report.formatted_line_message, group_ids=group_ids)
 
         e_trigger = CronTrigger(hour=e_hour, minute=e_minute, timezone=self.timezone_str)
         self.scheduler.add_job(

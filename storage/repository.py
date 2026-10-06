@@ -44,7 +44,34 @@ class WorkLogRepository:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_user_date ON work_items(user_id, log_date);
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS registered_groups (
+                    group_id TEXT PRIMARY KEY,
+                    group_name TEXT,
+                    last_active TEXT NOT NULL
+                )
+            """)
             conn.commit()
+
+    def register_group(self, group_id: str, group_name: Optional[str] = None):
+        if not group_id:
+            return
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO registered_groups (group_id, group_name, last_active)
+                VALUES (?, ?, ?)
+                ON CONFLICT(group_id) DO UPDATE SET
+                    group_name = coalesce(excluded.group_name, registered_groups.group_name),
+                    last_active = excluded.last_active
+            """, (group_id, group_name, datetime.now().isoformat()))
+            conn.commit()
+
+    def get_registered_groups(self) -> List[str]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT group_id FROM registered_groups")
+            return [row["group_id"] for row in cursor.fetchall()]
 
     def add_work_item(self, item: WorkItem) -> WorkItem:
         with self._get_connection() as conn:

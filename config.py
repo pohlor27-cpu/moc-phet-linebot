@@ -1,8 +1,10 @@
 import os
+from pathlib import Path
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path, override=True)
 
 class AppConfig(BaseModel):
     app_name: str = "LINE OA Daily Work Summarizer & OCR Bot"

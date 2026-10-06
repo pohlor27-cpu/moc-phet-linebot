@@ -72,21 +72,46 @@ class LineBotClient:
         except Exception as e:
             logger.error(f"Error sending Line reply: {e}")
 
-    def broadcast_summary(self, text: str):
-        self.sent_messages.append({"action": "broadcast", "text": text})
+    def push_message(self, to: str, text: str):
+        self.sent_messages.append({"action": "push", "to": to, "text": text})
+        if not self.is_configured:
+            logger.info(f"[MOCK LINE PUSH] To={to}: {text[:100]}...")
+            return
+
+        try:
+            from linebot.v3.messaging import PushMessageRequest, TextMessage
+            chunks = split_message_chunks(text)
+            messages = [TextMessage(text=c) for c in chunks]
+            request = PushMessageRequest(
+                to=to,
+                messages=messages
+            )
+            self.messaging_api.push_message(request)
+            logger.info(f"Successfully pushed message to {to} ({len(messages)} chunk(s))")
+        except Exception as e:
+            logger.error(f"Error pushing Line message to {to}: {e}")
+
+    def broadcast_summary(self, text: str, group_ids: Optional[List[str]] = None):
+        self.sent_messages.append({"action": "broadcast", "text": text, "groups": group_ids})
         if not self.is_configured:
             logger.info(f"[MOCK LINE BROADCAST]: {text[:100]}...")
             return
 
+        # 1. 1-on-1 Broadcast to individual followers
         try:
             from linebot.v3.messaging import BroadcastRequest, TextMessage
             chunks = split_message_chunks(text)
             messages = [TextMessage(text=c) for c in chunks]
             request = BroadcastRequest(messages=messages)
             self.messaging_api.broadcast(request)
-            logger.info(f"Successfully broadcasted {len(messages)} message chunk(s)")
+            logger.info(f"Successfully broadcasted {len(messages)} message chunk(s) to followers")
         except Exception as e:
             logger.error(f"Error broadcasting Line message: {e}")
+
+        # 2. Push message directly to all registered LINE Groups
+        if group_ids:
+            for gid in group_ids:
+                self.push_message(to=gid, text=text)
 
     def get_message_content(self, message_id: str) -> bytes:
         if not self.is_configured:
