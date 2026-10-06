@@ -1,6 +1,21 @@
+import re
 from datetime import date, timedelta
 from typing import List, Dict, Optional
 from domain.models import WorkItem, TaskStatus, DailySummaryReport, UserDailySummary
+
+def tag_mentions(text: str) -> str:
+    """Prepend @ to user names, assignees, and drivers for LINE group notifications."""
+    if not text:
+        return text
+    # 1. Prefix titles: คุณ, นางสาว, นาง, นาย with @ if not already tagged
+    res = re.sub(r'(?<!@)((?:คุณ|นางสาว|นาง|นาย)[ก-๙a-zA-Z]+)', r'@\1', text)
+    # 2. Prefix informal honorifics: พี่, น้อง when isolated
+    res = re.sub(r'(?<=[(\s|:,])(?<!@)((?:พี่|น้อง)[ก-๙a-zA-Z]+)', r'@\1', res)
+    # 3. Format driver prefix (ผขร:)
+    res = re.sub(r'ผขร[:\.]\s*(?!@)([ก-๙a-zA-Z]+)', r'ผขร: @\1', res)
+    # 4. Clean duplicate @@
+    res = re.sub(r'@+', '@', res)
+    return res
 
 class DailySummarizer:
     @staticmethod
@@ -90,7 +105,8 @@ class DailySummarizer:
 
             all_tasks = data["done"] + data["in_progress"] + data["blockers"] + data["notes"]
             for t in all_tasks:
-                msg_lines.append(f"{global_idx}. 📌 {t}")
+                tagged_task = tag_mentions(t)
+                msg_lines.append(f"{global_idx}. 📌 {tagged_task}")
                 global_idx += 1
             msg_lines.append("")
 
@@ -152,7 +168,8 @@ class DailySummarizer:
 
         for idx, item in enumerate(unique_items[:30], 1):
             time_tag = f"[{item.scheduled_time}] " if item.scheduled_time else ""
-            lines.append(f"{idx}. 📌 {time_tag}{item.task_text}")
+            tagged_task = tag_mentions(item.task_text)
+            lines.append(f"{idx}. 📌 {time_tag}{tagged_task}")
 
         if len(unique_items) > 30:
             lines.append(f"\n... และมีรายการอื่นๆ อีก {len(unique_items) - 30} รายการ")
