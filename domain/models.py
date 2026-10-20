@@ -47,3 +47,13 @@ class DailySummaryReport(BaseModel):
     blocker_count: int = 0
     user_summaries: List[UserDailySummary] = Field(default_factory=list)
     formatted_line_message: str = ""
+
+class PDFSummaryResult(BaseModel):
+    file_name: str
+    total_pages: int = 1
+    summary_text: str
+    detected_tasks: List[WorkItem] = Field(default_factory=list)
+    key_points: List[str] = Field(default_factory=list)
+    action_items: List[str] = Field(default_factory=list)
+    processed_at: datetime = Field(default_factory=datetime.now)
+

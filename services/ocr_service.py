@@ -75,7 +75,7 @@ class OCRService:
             )
             
             models_to_try = [
-                "gemini-3.1-flash-lite",
+                "gemini-3.8-flash",
                 "gemini-3.6-flash",
                 "gemini-3.5-flash-lite",
                 "gemini-flash-lite-latest",
@@ -161,9 +161,10 @@ class OCRService:
                     elif "BLOCK" in status_str or "ERROR" in status_str:
                         status_enum = TaskStatus.BLOCKER
 
+                    task_owner = assignee.strip("@").strip() if assignee else user_name
                     items.append(WorkItem(
                         user_id=user_id,
-                        user_name=user_name,
+                        user_name=task_owner,
                         task_text=task_text,
                         status=status_enum,
                         log_date=date_val,

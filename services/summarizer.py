@@ -17,6 +17,31 @@ def tag_mentions(text: str) -> str:
     res = re.sub(r'@+', '@', res)
     return res
 
+def thai_sort_key(name: str) -> str:
+    """Sort key for Thai and English names, correctly handling Thai leading vowels."""
+    if not name:
+        return ""
+    s = re.sub(r"^[@\s\-\*•]+", "", name).strip()
+    # Strip common honorifics for sorting, but keep them in display
+    # (คุณ, นาย, นาง, นางสาว, พี่, น้อง)
+    stripped = re.sub(r"^(?:คุณ|นาย|นางสาว|นาง|พี่|น้อง)\s*", "", s)
+    if stripped:
+        s = stripped
+    leading_vowels = "เแโใไ"
+    if len(s) >= 2 and s[0] in leading_vowels:
+        return s[1] + s[0] + s[2:]
+    return s.lower()
+
+def extract_person_name(item: WorkItem) -> str:
+    uname = (item.user_name or "").strip()
+    if uname and uname not in ["Anonymous", "น้องบอท", "api_tester", "unknown_user", "ผู้ใช้"]:
+        return uname
+    # Try extracting person name from task text if user_name is generic
+    m = re.search(r'[@\(\[]\s*((?:คุณ|นาย|นางสาว|นาง|พี่|น้อง)[ก-๙a-zA-Z]+)', item.task_text)
+    if m:
+        return m.group(1).strip()
+    return uname or "ส่วนกลาง / ไม่ระบุชื่อ"
+
 class DailySummarizer:
     @staticmethod
     def generate_daily_report(items: List[WorkItem], target_date: Optional[date] = None) -> DailySummaryReport:
@@ -32,7 +57,7 @@ class DailySummarizer:
                 f"สำนักงานพาณิชย์จังหวัดเพชรบุรี\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"✨ ยังไม่มีรายการงานที่บันทึกไว้สำหรับ{date_label}ครับผม\n\n"
-                f"💡 สามารถส่งรูปภาพตารางงานเพื่อบันทึกงานได้ตลอดเวลาครับ"
+                f"💡 สามารถส่งรูปภาพตารางงานหรือไฟล์ PDF เพื่อบันทึกงานได้ตลอดเวลาครับ"
             )
             return DailySummaryReport(
                 report_date=target_date,
@@ -45,69 +70,72 @@ class DailySummarizer:
                 formatted_line_message=formatted_msg
             )
 
-        # Deduplicate and group items by user
-        users_map: Dict[str, Dict] = {}
+        # 1. Group items by Person Name
+        persons_map: Dict[str, List[WorkItem]] = {}
         for item in items:
-            uid = item.user_id
-            uname = item.user_name or "น้องบอท"
-            if uid not in users_map:
-                users_map[uid] = {
-                    "name": uname,
-                    "done": [],
-                    "in_progress": [],
-                    "blockers": [],
-                    "notes": []
-                }
-            
-            task_clean = item.task_text.strip()
-            if not task_clean:
-                continue
+            pname = extract_person_name(item)
+            if pname not in persons_map:
+                persons_map[pname] = []
+            persons_map[pname].append(item)
 
-            target_list = None
-            if item.status == TaskStatus.DONE:
-                target_list = users_map[uid]["done"]
-            elif item.status == TaskStatus.IN_PROGRESS:
-                target_list = users_map[uid]["in_progress"]
-            elif item.status == TaskStatus.BLOCKER:
-                target_list = users_map[uid]["blockers"]
-            else:
-                target_list = users_map[uid]["notes"]
-            
-            if task_clean not in target_list:
-                target_list.append(task_clean)
+        # 2. Sort persons alphabetically (ชื่อเรียงตามลำดับตัวอักษร)
+        sorted_person_names = sorted(persons_map.keys(), key=thai_sort_key)
+
+        # 3. Sort tasks chronologically by date and scheduled_time for each person
+        def task_sort_key(it: WorkItem):
+            d = it.log_date or date.min
+            t = it.scheduled_time or ""
+            return (d, t, it.id or 0)
 
         user_summaries: List[UserDailySummary] = []
         total_tasks = len(items)
-        completed_count = sum(len(u["done"]) for u in users_map.values())
-        in_progress_count = sum(len(u["in_progress"]) for u in users_map.values())
-        blocker_count = sum(len(u["blockers"]) for u in users_map.values())
+        completed_count = sum(1 for it in items if it.status == TaskStatus.DONE)
+        in_progress_count = sum(1 for it in items if it.status == TaskStatus.IN_PROGRESS)
+        blocker_count = sum(1 for it in items if it.status == TaskStatus.BLOCKER)
 
         msg_lines = [
             f"📊 น้องบอทสรุปผลงานประจำ{date_label} ({target_date.strftime('%d/%m/%Y')})",
             f"สำนักงานพาณิชย์จังหวัดเพชรบุรี",
             f"━━━━━━━━━━━━━━━━━━",
-            f"📝 รวมทั้งหมด {total_tasks} ภารกิจ",
+            f"📝 รวมทั้งหมด {total_tasks} ภารกิจ ({len(sorted_person_names)} ท่าน)",
             f"━━━━━━━━━━━━━━━━━━\n"
         ]
 
-        global_idx = 1
-        for uid, data in users_map.items():
+        for pname in sorted_person_names:
+            person_items = sorted(persons_map[pname], key=task_sort_key)
+            
+            done_list = [it.task_text for it in person_items if it.status == TaskStatus.DONE]
+            prog_list = [it.task_text for it in person_items if it.status == TaskStatus.IN_PROGRESS]
+            block_list = [it.task_text for it in person_items if it.status == TaskStatus.BLOCKER]
+            note_list = [it.task_text for it in person_items if it.status == TaskStatus.NOTE]
+
             user_sum = UserDailySummary(
-                user_id=uid,
-                user_name=data["name"],
-                total_tasks=len(data["done"]) + len(data["in_progress"]) + len(data["blockers"]) + len(data["notes"]),
-                done_tasks=data["done"],
-                in_progress_tasks=data["in_progress"],
-                blockers=data["blockers"],
-                notes=data["notes"]
+                user_id=pname,
+                user_name=pname,
+                total_tasks=len(person_items),
+                done_tasks=done_list,
+                in_progress_tasks=prog_list,
+                blockers=block_list,
+                notes=note_list
             )
             user_summaries.append(user_sum)
 
-            all_tasks = data["done"] + data["in_progress"] + data["blockers"] + data["notes"]
-            for t in all_tasks:
-                tagged_task = tag_mentions(t)
-                msg_lines.append(f"{global_idx}. 📌 {tagged_task}")
-                global_idx += 1
+            msg_lines.append(f"👤 {pname} ({len(person_items)} ภารกิจ):")
+            for it in person_items:
+                # Format icon by status
+                if it.status == TaskStatus.DONE:
+                    icon = "✅"
+                elif it.status == TaskStatus.IN_PROGRESS:
+                    icon = "⏳"
+                elif it.status == TaskStatus.BLOCKER:
+                    icon = "⚠️"
+                else:
+                    icon = "📌"
+
+                date_prefix = f"{it.log_date.strftime('%d/%m/%Y')} " if it.log_date else ""
+                time_tag = f"[{it.scheduled_time}] " if it.scheduled_time else ""
+                tagged_task = tag_mentions(it.task_text.strip())
+                msg_lines.append(f"  • {date_prefix}{time_tag}{icon} {tagged_task}")
             msg_lines.append("")
 
         msg_lines.append("━━━━━━━━━━━━━━━━━━")
@@ -115,7 +143,7 @@ class DailySummarizer:
 
         return DailySummaryReport(
             report_date=target_date,
-            total_users=len(users_map),
+            total_users=len(sorted_person_names),
             total_tasks=total_tasks,
             completed_count=completed_count,
             in_progress_count=in_progress_count,
@@ -123,6 +151,7 @@ class DailySummarizer:
             user_summaries=user_summaries,
             formatted_line_message="\n".join(msg_lines).strip()
         )
+
 
     @staticmethod
     def generate_morning_briefing(items: List[WorkItem], target_date: Optional[date] = None) -> str:

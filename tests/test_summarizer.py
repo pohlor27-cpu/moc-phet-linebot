@@ -41,3 +41,34 @@ def test_generate_morning_briefing():
     assert "ตรวจตลาดสดเทศบาล" in briefing
     assert "ประชุมแผนงานพาณิชย์" in briefing
     assert "09:00 - 12:00" in briefing
+
+def test_alphabetical_and_chronological_ordering():
+    summarizer = DailySummarizer()
+    items = [
+        WorkItem(user_id="U3", user_name="คุณสมชาย", task_text="งานวันที่ 10", log_date=date(2026, 10, 10), scheduled_time="14:00"),
+        WorkItem(user_id="U3", user_name="คุณสมชาย", task_text="งานวันที่ 5 เช้า", log_date=date(2026, 10, 5), scheduled_time="09:00"),
+        WorkItem(user_id="U3", user_name="คุณสมชาย", task_text="งานวันที่ 5 บ่าย", log_date=date(2026, 10, 5), scheduled_time="13:30"),
+        WorkItem(user_id="U1", user_name="คุณกรรณิการ์", task_text="งานตรวจตลาด", log_date=date(2026, 10, 6), scheduled_time="10:00"),
+        WorkItem(user_id="U2", user_name="คุณชาญ", task_text="ขับรถรับส่งวิทยากร", log_date=date(2026, 10, 5), scheduled_time="08:00"),
+    ]
+
+    report = summarizer.generate_daily_report(items, date(2026, 10, 5))
+    msg = report.formatted_line_message
+
+    # 1. Names must appear in alphabetical order: คุณกรรณิการ์ -> คุณชาญ -> คุณสมชาย
+    idx_kannika = msg.find("คุณกรรณิการ์")
+    idx_chan = msg.find("คุณชาญ")
+    idx_somchai = msg.find("คุณสมชาย")
+
+    assert idx_kannika != -1 and idx_chan != -1 and idx_somchai != -1
+    assert idx_kannika < idx_chan < idx_somchai
+
+    # 2. For คุณสมชาย, tasks must appear in chronological order:
+    # 05/10 09:00 -> 05/10 13:30 -> 10/10 14:00
+    idx_task_d5_morning = msg.find("งานวันที่ 5 เช้า")
+    idx_task_d5_afternoon = msg.find("งานวันที่ 5 บ่าย")
+    idx_task_d10 = msg.find("งานวันที่ 10")
+
+    assert idx_task_d5_morning != -1 and idx_task_d5_afternoon != -1 and idx_task_d10 != -1
+    assert idx_task_d5_morning < idx_task_d5_afternoon < idx_task_d10
+

@@ -11,6 +11,9 @@ env/
 *.db
 *.sqlite3
 .pytest_cache/
+*.log
+*.pid
+
 
 # IDE
 .vscode/

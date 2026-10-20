@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 from domain.models import WorkItem, TaskStatus
 from storage.repository import WorkLogRepository
 from services.ocr_service import OCRService
+from services.pdf_service import PDFService
 from services.summarizer import DailySummarizer
 from bot.line_client import LineBotClient
 
@@ -21,13 +22,16 @@ class LineWebhookHandler:
         ocr_service: OCRService,
         summarizer: DailySummarizer,
         line_client: LineBotClient,
-        channel_secret: str
+        channel_secret: str,
+        pdf_service: Optional[PDFService] = None
     ):
         self.repo = repo
         self.ocr_service = ocr_service
         self.summarizer = summarizer
         self.line_client = line_client
         self.channel_secret = channel_secret
+        self.pdf_service = pdf_service or PDFService()
+
 
     def verify_signature(self, body_bytes: bytes, signature: str) -> bool:
         if not signature or self.channel_secret == "dummy_channel_secret":
@@ -69,10 +73,11 @@ class LineWebhookHandler:
                 "👋 สวัสดีครับผม! น้องบอทพร้อมช่วยงานสำนักงานพาณิชย์จังหวัดเพชรบุรีแล้วครับ\n"
                 "━━━━━━━━━━━━━━━━━━\n"
                 "📌 วิธีใช้งานง่ายๆ:\n"
+                "• ส่งไฟล์ PDF ➡️ น้องบอทจะสรุปสาระสำคัญให้อ่านง่ายทันทีครับ\n"
                 "• ส่งรูปถ่ายตารางงาน ➡️ น้องบอทจะสรุปและบันทึกข้อมูลเข้าระบบให้ทันทีครับ\n"
                 "• พิมพ์ 'วันนี้' ➡️ ดูตารางภารกิจประจำวันนี้\n"
                 "• พิมพ์ 'พรุ่งนี้' ➡️ ดูตารางภารกิจประจำวันพรุ่งนี้\n"
-                "• พิมพ์ 'สรุป' ➡️ ดูสรุปผลงานรวม"
+                "• พิมพ์ 'สรุป' ➡️ ดูสรุปผลงานรวมแยกตามชื่อเจ้าหน้าที่และวันที่"
             )
             if reply_token:
                 self.line_client.reply_text(reply_token, welcome_msg)
@@ -90,6 +95,10 @@ class LineWebhookHandler:
         elif msg_type == "image":
             message_id = message.get("id")
             self._handle_image_message(reply_token, user_id, user_name, message_id)
+        elif msg_type == "file":
+            message_id = message.get("id")
+            file_name = message.get("fileName", "document.pdf")
+            self._handle_file_message(reply_token, user_id, user_name, message_id, file_name)
 
     def _handle_text_message(self, reply_token: Optional[str], user_id: str, user_name: str, text: str):
         if not reply_token:
@@ -140,7 +149,8 @@ class LineWebhookHandler:
                 "━━━━━━━━━━━━━━━━━━\n"
                 "• พิมพ์ 'วันนี้' หรือ 'วันน' ➡️ ดูตารางงานวันนี้\n"
                 "• พิมพ์ 'พรุ่งนี้' ➡️ ดูตารางงานวันพรุ่งนี้\n"
-                "• พิมพ์ 'สรุป' ➡️ ดูสรุปผลงานรวม\n"
+                "• พิมพ์ 'สรุป' ➡️ ดูสรุปผลงานรวมแยกตามชื่อเจ้าหน้าที่และวันที่\n"
+                "• ส่งไฟล์ PDF ➡️ น้องบอทจะสรุปสาระสำคัญให้อ่านง่ายทันทีครับ\n"
                 "• ส่งรูปตารางงาน ➡️ น้องบอทจะสรุปและบันทึกอัตโนมัติครับผม"
             )
             self.line_client.reply_text(reply_token, help_msg)
@@ -200,3 +210,39 @@ class LineWebhookHandler:
             "💡 พิมพ์ 'วันนี้' หรือ 'พรุ่งนี้' เพื่อดูภารกิจเฉพาะวันได้เลยครับ"
         ]
         self.line_client.reply_text(reply_token, "\n".join(reply_lines).strip())
+
+    def _handle_file_message(self, reply_token: Optional[str], user_id: str, user_name: str, message_id: str, file_name: str):
+        if not reply_token:
+            return
+
+        # 1. Fetch file bytes from LINE API
+        file_bytes = self.line_client.get_message_content(message_id)
+        if not file_bytes:
+            self.line_client.reply_text(
+                reply_token,
+                "⚠️ น้องบอทไม่สามารถดาวน์โหลดไฟล์ได้ กรุณาลองส่งใหม่อีกครั้งนะครับผม"
+            )
+            return
+
+        # 2. Process PDF document summary
+        pdf_result = self.pdf_service.process_pdf(
+            pdf_bytes=file_bytes,
+            file_name=file_name,
+            user_id=user_id,
+            user_name=user_name
+        )
+
+        # 3. Save any detected work items/tasks
+        if pdf_result.detected_tasks:
+            self.repo.add_work_items_batch(pdf_result.detected_tasks)
+
+        reply_text = pdf_result.summary_text
+        if pdf_result.detected_tasks:
+            reply_text += (
+                f"\n\n━━━━━━━━━━━━━━━━━━\n"
+                f"✅ น้องบอทบันทึกตารางภารกิจจากเอกสารเรียบร้อยแล้วครับผม ({len(pdf_result.detected_tasks)} รายการ)\n"
+                f"💡 พิมพ์ 'วันนี้' หรือ 'สรุป' เพื่อดูรายการงานได้เลยครับ"
+            )
+
+        self.line_client.reply_text(reply_token, reply_text.strip())
+
