@@ -33,13 +33,24 @@ webhook_handler = LineWebhookHandler(
 )
 
 
+from collections import deque
+from datetime import datetime
+
+# In-memory diagnostic log
+WEBHOOK_LOGS = deque(maxlen=20)
+
 @router.get("/health")
 def health_check():
     return {
         "status": "healthy",
         "app": config.app_name,
         "daily_summary_time": config.daily_summary_time,
-        "ocr_provider": config.ocr_provider
+        "ocr_provider": config.ocr_provider,
+        "line_configured": line_client.is_configured,
+        "token_len": len(config.line_channel_access_token),
+        "secret_prefix": config.line_channel_secret[:4] if config.line_channel_secret else "",
+        "registered_groups": repo.get_registered_groups(),
+        "recent_webhook_events": list(WEBHOOK_LOGS)
     }
 
 @router.post("/callback")
@@ -53,21 +64,46 @@ async def line_webhook_callback(
         or ""
     )
     
-    if not webhook_handler.verify_signature(body_bytes, signature):
-        # In case secret mismatch, log warning
+    is_valid_sig = webhook_handler.verify_signature(body_bytes, signature)
+    if not is_valid_sig:
         print(f"[LINE Webhook] Warning: Signature mismatch. Received Sig: {signature[:15]}...")
-        # If testing or verify button, allow or handle
+        WEBHOOK_LOGS.append({
+            "time": datetime.now().isoformat(),
+            "status": "signature_mismatch",
+            "sig": signature[:15]
+        })
         if signature:
             raise HTTPException(status_code=400, detail="Invalid LINE Signature")
 
     try:
         payload = json.loads(body_bytes.decode("utf-8"))
-        print(f"[LINE Webhook] Received payload: {len(payload.get('events', []))} events")
+        events = payload.get("events", [])
+        log_entry = {
+            "time": datetime.now().isoformat(),
+            "status": "received",
+            "num_events": len(events),
+            "events_summary": [
+                {
+                    "type": ev.get("type"),
+                    "source": ev.get("source"),
+                    "message_type": ev.get("message", {}).get("type") if ev.get("message") else None,
+                    "text": ev.get("message", {}).get("text") if ev.get("message") else None
+                } for ev in events
+            ]
+        }
+        WEBHOOK_LOGS.append(log_entry)
+        print(f"[LINE Webhook] Received payload: {len(events)} events")
         webhook_handler.handle_webhook_payload(payload)
-        return {"status": "ok", "events_processed": len(payload.get("events", []))}
+        return {"status": "ok", "events_processed": len(events)}
     except Exception as e:
+        WEBHOOK_LOGS.append({
+            "time": datetime.now().isoformat(),
+            "status": "error",
+            "error": str(e)
+        })
         print(f"[LINE Webhook Error]: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/api/summary/today", response_model=DailySummaryReport)
 def get_today_summary(target_date: Optional[str] = None):
